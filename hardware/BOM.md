@@ -6,7 +6,7 @@ Updated: 2026-09-19 (Shenzhen Hackathon)
 
 | Item | Module / Part # | Qty | Status | Interfaces / Rails | Notes & Power Warning |
 |---|---|---|---|---|---|
-| 1 | **ESP32_Core / moce:ai** | 1 | ✅ 確認 | Type-C, SHIELD 雙排針 | 主控 MCU，負責感測、通訊與運算編排 |
+| 1 | **ESP32_Core / moce:ai**（確認為 **ESP32-WROOM-32E**） | 1 | ✅ 確認 (原廠模組絲印) | Type-C, SHIELD 雙排針 | 雙核 240MHz / Wi-Fi+BT / 4MB Flash / 無 PSRAM；底部 CAN_OUT、UART_A、I2C |
 | 2 | **ESP32_Shield_V1** | 1 | ✅ 確認 | 排母插座、各模組接腳引出 | 底板轉接擴展板 |
 | 3 | **Power_Management_V1** | 1 | ✅ 確認 (背面) | 11.1V IN, 5V / 3.3V OUT | ⚠️ 必經降壓！嚴禁將 11.1V 直接送入 5V/3.3V 模組 |
 | 4 | **11.1V 3S 電池包** | 1 | ⚠️ 待核標籤 | XT30/XT60/DC 插頭 | 總電源輸入；需注意充放電保護與接頭極性 |
@@ -20,7 +20,7 @@ Updated: 2026-09-19 (Shenzhen Hackathon)
 | 5 | **Motor_Driver_Module_DC5V** | 1 | ✅ 確認 | MOTOR1 / MOTOR2 輸出 | 雙路直流電機驅動，接 TT 減速馬達 |
 | 6 | **TT 減速馬達 + 橡膠輪** | 2 | ✅ 確認 | 兩線 (正/負) × 2 | 左右差速驅動小車底盤；先對線序確認轉向 |
 | 7 | **Servo Controller Module** | 1 | ✅ 確認 | A1 / A2 SERVO_OUT_5V | 專用 5V 舵機控制板，隔離大電流突波 |
-| 8 | **TowerPro MG90S 舵機** | 1~2 | ⚠️ 確認 1 顆 (待補 1) | 3-Pin (棕 GND, 紅 5V, 黃 PWM) | 雲台俯仰/水平控制 (4.8~6V 供電，嚴禁接 11.1V) |
+| 8 | **TowerPro MG90S 舵機** | 2 | ✅ 確認 ×2 (180°/360° 版待上電實測) | 3-Pin (棕 GND, 紅 5V, 黃 PWM) | 雲台俯仰/水平控制 (4.8~6V 供電，嚴禁接 11.1V) |
 
 ---
 
@@ -29,7 +29,7 @@ Updated: 2026-09-19 (Shenzhen Hackathon)
 | Item | Module / Part # | Qty | Status | Interface / Pins | 用途 / 規格 |
 |---|---|---|---|---|---|
 | 9 | **IMU Module** | 1 | ⚠️ 半確認 (待近拍晶片) | I2C (SDA / SCL) | 六軸姿態檢測 (MPU6050 / LSM6DS 類) |
-| 10 | **Laser_Ranging (ToF)** | 1 | ⚠️ 高度疑似 VL53L0X/L1X | I2C + 5V/GND/IO1/XSHUT | 前向障礙物精準毫米級測距 |
+| 10 | **Laser_Ranging (ToF)** | 1 | ✅ 真機確認 VL53L4CD family (`0x29`, ID `0xEB`) | I2C + VDD/GND/IO1/XSHUT | STM32duino VL53L4CD driver 已實測可讀毫米距離 |
 | 11 | **Microphone Module** | 1 | ✅ 確認 | Analog / Digital / I2S | 環境音量檢測、聲音事件捕捉 |
 | 12 | **Temp&Humidity_Sensor** | 1 | ✅ 新增確認 (SHT/AHT/DHT) | I2C 或 單線數位 (IO) | 環境溫濕度採集 |
 | 13 | **LDR_Module (光敏電阻)** | 1 | ✅ 新增確認 | Analog AO / Digital DO | 環境光照感測 |
@@ -43,8 +43,9 @@ Updated: 2026-09-19 (Shenzhen Hackathon)
 
 | Item | Module / Part # | Qty | Status | Interface | 用途 |
 |---|---|---|---|---|---|
-| 17 | **Text_to_Speech (TTS) Module** | 1 | ✅ 確認 | UART / Serial | 語音播報、智慧語音合成 |
+| 17 | **Text_to_Speech (TTS) Module** | 1 working + 1 faulty | ✅ 9600 UART + SYN6288 frame confirmed | UART_A: TX GPIO17 / RX GPIO16 | Replacement module spoke `HELLO`; original module produced no audio |
 | 18 | **0.96 OLED Display Module** | 1 | ✅ 確認 | I2C / FPC (SSD1306) | 表情顯示、IP/連線狀態、系統即時數據 |
+| 18a | **PN532 NFC Reader** | 1 | ⬜ 選配／待取得 | I2C 或 SPI | 真實「Tap 領券」；未取得時由 dashboard 的模擬 NFC Tap 完成 demo |
 
 ---
 

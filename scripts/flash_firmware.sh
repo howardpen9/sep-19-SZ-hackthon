@@ -13,7 +13,7 @@ echo "Target port: $PORT @ $BAUD baud"
 
 if command -v pio &> /dev/null; then
     echo "PlatformIO detected. Uploading firmware..."
-    pio run --target upload --upload-port "$PORT"
+    pio run -d firmware --target upload --upload-port "$PORT"
 elif command -v arduino-cli &> /dev/null; then
     echo "Arduino CLI detected. Compiling and uploading..."
     arduino-cli compile --fqbn esp32:esp32:esp32 firmware/

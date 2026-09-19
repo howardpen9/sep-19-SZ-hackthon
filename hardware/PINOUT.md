@@ -13,27 +13,29 @@
 - **掛載裝置**：
   1. `0.96 OLED (SSD1306)` (預設位址: `0x3C`)
   2. `IMU Module (MPU6050)` (預設位址: `0x68` 或 `0x69`)
-  3. `ToF Laser Ranging (VL53L0X/L1X)` (預設位址: `0x29`)
+  3. `ToF Laser Ranging (VL53L4CD)` (位址: `0x29`, model register: `0xEB`)
   4. `Temp&Humidity Sensor (SHT/AHT)` (預設位址: `0x38` 或 `0x44`)
 
 ### 1.2 輔助通訊串口 (UART)
 - **USB-UART 主通訊 (對主機/Agent)**：
   - `TX0 (GPIO 1)` / `RX0 (GPIO 3)` @ 115200 bps
 - **硬體串口 2 (對 TTS Module 語音模組 / CH32 橋接)**：
-  - `TX2 (GPIO 17)` $\rightarrow$ TTS Module RX
-  - `RX2 (GPIO 16)` $\leftarrow$ TTS Module TX (可選) @ 9600 或 115200 bps
+  - `TXD1 (GPIO 17)` $\rightarrow$ TTS Module RX
+  - `RXD1 (GPIO 16)` $\leftarrow$ TTS Module TX (可選) @ 9600 或 115200 bps
 
 ### 1.3 馬達驅動 (Motor_Driver_Module_DC5V - 差速輪)
 - **MOTOR1 (左輪 TT 馬達)**：
-  - `IN1`: `GPIO 18` (PWM 速度)
-  - `IN2`: `GPIO 19` (方向)
+  - `PWMA`: `GPIO 25`
+  - `AIN1 / AIN2`: `GPIO 27 / 14`
 - **MOTOR2 (右輪 TT 馬達)**：
-  - `IN3`: `GPIO 23` (PWM 速度)
-  - `IN4`: `GPIO 5` (方向)
+  - `PWMB`: `GPIO 26`
+  - `BIN1 / BIN2`: `GPIO 12 / 13`
+
+MOTOR1/2 對應實際左右與正反轉待架空校正，以上 A/B 訊號來自主板原理圖。
 
 ### 1.4 舵機控制 (Servo Controller Module - 雲台 Pan / Tilt)
-- **A1 SERVO (Pan 水平雲台 - MG90S #1)**: `GPIO 25` (50Hz PWM, 0°~180°)
-- **A2 SERVO (Tilt 俯仰雲台 - MG90S #2)**: `GPIO 26` (50Hz PWM, 0°~180°)
+- **PWM1 SERVO (Pan，待實測)**: `GPIO 32` (50Hz PWM)
+- **PWM2 SERVO (Tilt，待實測)**: `GPIO 33` (50Hz PWM)
 
 ### 1.5 模擬類比輸入 (ADC Channel 1 - 避開 WiFi 衝突的 ADC2)
 - **Microphone Module (音量感測)**: `GPIO 34 (ADC1_CH6)`
@@ -56,6 +58,6 @@
   │
   └── 3.3V Rail (乾淨邏輯) ───► [ ESP32_Core / Shield_V1 ]
                                 ├── I2C Bus (GPIO 21/22) ──► OLED / IMU / ToF / 溫濕度
-                                ├── UART2 (GPIO 17/16)  ──► TTS 語音播報模組
+                                ├── UART2 (TX GPIO17 / RX GPIO16) ──► TTS 語音播報模組
                                 └── ADC Inputs (GPIO 32~36) ─► Mic / 光敏 / 旋鈕
 ```

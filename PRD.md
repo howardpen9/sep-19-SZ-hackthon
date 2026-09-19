@@ -5,6 +5,41 @@
 - **Event**: Shenzhen Hackathon (2026-09-19)
 - **Project Name**: Moce:AI Multimodal Edge Rover & Intelligent Control Station
 - **Hardware Stack**: `ESP32_Core / moce:ai` + `ESP32_Shield_V1` + `Power_Management_V1`
+
+### 1.1 主控確認規格 (Verified Silicon)
+
+| 項目 | 確認值 (照片絲印鐵證) |
+|---|---|
+| 主控模組 | **ESPRESSIF ESP32-WROOM-32E**（原廠模組，非兼容版） |
+| 運算 | 雙核 Xtensa LX6 @ 240MHz，無 NPU / 無 PSRAM |
+| 無線 | Wi-Fi 802.11 b/g/n + 藍牙（BT Classic + BLE） |
+| Flash / SRAM | **4MB Flash** / 約 520KB SRAM（可用 heap 約 250–300KB） |
+| 燒錄/除錯 | Type-C（板上 USB 轉串口晶片）+ BOOT/RESET 按鍵 |
+| 電源輸入 | 黃色 XT30 5V（來自 Power_Management_V1） |
+| Core 底部出口 | `CAN_OUT` / `UART_A` / `I2C` 三個 JST 白座 |
+
+> **韌體體積實測**：PlatformIO 6.2.0 編譯 = 289KB / 1.3MB（**22.1%**），RAM 6.6% — 部署空間綽綽有餘。
+
+### 1.2 Shield_V1 接口全圖 (官方接線定案，模組插對插座即可)
+
+| Shield 絲印 | 用途 | 掛載模組 |
+|---|---|---|
+| `I2C` | SDA/SCL 菊花鏈總線 | OLED(0x3C) / IMU(0x68) / ToF(0x29) / 溫濕度(0x38/0x44) |
+| `UART_A` | 硬體串口 | TTS 語音模組、CH32 橋接板 |
+| `CAN_OUT` ×3 (橘) | CAN 總線（ESP32 內建 TWAI） | 3 塊 CH32 節點板（⚠️ 每塊須先各自燒韌體） |
+| `ADC1–ADC4` | 4 路類比輸入 (0–3.3V) | ⚠️ 5 件類比件（Mic/LDR/熱敏/水位/電位器）搶 4 位，取捨 1 件 |
+| `MIC` / `SPK` | 麥克風入 / 喇叭出 | Microphone Module / TTS 喇叭 |
+| `SERVO_OUT` / `MOTOR_OUT` | 各 2 路 PWM | Servo Controller (MG90S×2) / Motor Driver (TT 馬達×2) |
+| 上下圓孔焊盤 | 各 10 孔 | 原型擴展（飛線/加感測器） |
+
+### 1.3 硬體能力邊界 (Hard Limits — 不做幻想功能)
+
+| 邊界 | 結論 |
+|---|---|
+| 「看到人」 | ✅ ToF 前向測距判有人靠近（< 80–100cm）；❌ 無鏡頭，**不做人臉識別** |
+| 「聽懂回答」 | 簡單版 = 類比 Mic 判「有無聲音」；進階版 = I2S 錄音 → Wi-Fi 上雲端 ASR |
+| ADC2 衝突 | 開 Wi-Fi 時 ADC2 失效 → 類比感測器全部走 ADC1 (GPIO32–39) |
+| 本地 AI | 無 PSRAM/NPU → 不跑影像/神經網路，LLM 決策放主機端 Python |
 - **Key Capabilities**: 
   1. **Locomotion**: 雙輪差速驅動底盤 (TT 馬達 + 橡膠輪)
   2. **Active Perception**: MG90S 雙軸雲台 (Pan/Tilt) + ToF 雷射測距 (VL53L0X) + IMU 姿態
@@ -55,4 +90,4 @@
 - [x] JSON-Lines 雙向控制協議 (`docs/PROTOCOL.md`) 規範完成
 - [x] 免硬體 Mock 模擬器 (`scripts/mock_hardware.py`) 支援全套虛擬小車行為
 - [x] 整合式網頁控制台 (`software/server.py`) 支援即時駕駛、舵機調整、語音與雷達數值
-- [x] ESP32 固件框架 (`firmware/src/main.cpp`) 完成編譯準備
+- [x] ESP32 固件框架 (`firmware/src/main.cpp`) **編譯驗證通過**（PlatformIO Core 6.2.0 @ macOS M2，Flash 22.1%）

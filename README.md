@@ -26,6 +26,13 @@ bash scripts/dev.sh
 bash scripts/flash_firmware.sh
 ```
 
+### Manual rover demo (60 seconds)
+1. Open `http://localhost:8000`. For physical hardware, start with `SIMULATE_HARDWARE=false SERIAL_PORT=<your-serial-port> .venv/bin/python -m software.server` and verify `/api/diagnostics` reports `hardware_mode: true` with advancing telemetry.
+2. Verify wheel direction with wheels raised, then use the direction buttons in a clear demo lane. Each click requests a short pulse capped at 50% duty; the firmware stops after approximately 500 ms without another motor command. Autonomous demo start is disabled.
+3. Stop, display an invitation on the OLED, and use the 9600 HELLO diagnostic or SPEAK button for audio. Chinese SPEAK uses GBK and still needs audible verification. A real NFC/QR phone claim flow is not implemented; describe any acted-out tap as a simulation.
+
+USB-C carries host control; the motor board requires its own verified 5V supply. After unplugging USB, restart the host service to reconnect. See `docs/HARDWARE_CONTEXT.md` for hardware evidence and remaining limitations.
+
 ---
 
 ## 2. Architecture Overview

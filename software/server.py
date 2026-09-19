@@ -7,6 +7,7 @@ import os
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from software.bridge import HardwareBridge
+from software.demo_controller import CouponDemoController
 
 latest_telemetry = {
     "type": "telemetry",
@@ -18,6 +19,9 @@ latest_telemetry = {
     }
 }
 bridge = None
+demo_controller = None
+latest_ack = None
+latest_device_error = None
 
 HTML_DASHBOARD = """<!DOCTYPE html>
 <html lang="zh-TW">
@@ -93,6 +97,22 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     }
     .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
     .metric-val { font-size: 20px; font-weight: bold; color: var(--accent); }
+    .mic-meter { margin-top: 12px; }
+    .mic-bar-track {
+      background: #0c1220;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      height: 18px;
+      overflow: hidden;
+    }
+    .mic-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+      transition: width 0.1s linear;
+    }
+    .mic-status { font-size: 13px; font-weight: bold; color: var(--text-muted); }
+    .mic-status.loud { color: var(--danger); }
     .tof-radar {
       background: #0c1220;
       border: 1px solid var(--card-border);
@@ -195,6 +215,16 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           <div class="metric-val" id="env-val">25.0°C / 60%</div>
         </div>
       </div>
+      <div class="mic-meter">
+        <div class="slider-header">
+          <span class="metric-label" style="margin-bottom: 0;">麥克風音量 (MIC LEVEL · ADC GPIO34)</span>
+          <span class="mic-status" id="mic-status">待機</span>
+        </div>
+        <div class="mic-bar-track"><div class="mic-bar-fill" id="mic-bar"></div></div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+          Raw ADC: <span id="mic-raw">0</span> / 4095 · 基線: <span id="mic-baseline">—</span>
+        </div>
+      </div>
     </div>
 
     <!-- Middle Controls -->
@@ -214,7 +244,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           <div></div>
         </div>
         <div style="text-align: center; font-size: 12px; color: var(--text-muted);">
-          速度設定：左右輪差速驅動 · 支援負數倒退
+          架空校正：每次點擊最多 50% 輸出，約 0.5 秒後自動停止；左右與方向待確認
         </div>
       </div>
 
@@ -242,6 +272,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           <button class="btn-action" onclick="sendTTS()">語音發音</button>
         </div>
         <div class="input-row">
+          <button class="btn-action" style="background: #7c3aed;" onclick="testTTS(9600)">TTS 測試 9600</button>
+          <button class="btn-action" style="background: #7c3aed;" onclick="testTTS(115200)">TTS 測試 115200</button>
+          <span id="tts-test-status">尚未測試</span>
+        </div>
+        <div class="input-row">
           <input type="text" id="oled-input" placeholder="輸入 OLED 第1行文字..." value="HELLO SHENZHEN">
           <button class="btn-action" style="background: #475569;" onclick="sendOLED()">更新螢幕</button>
         </div>
@@ -249,6 +284,16 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     </div>
 
     <!-- Bottom: Raw Telemetry -->
+    <div class="card" style="margin-bottom: 20px;">
+      <h2>商場優惠券展示流程</h2>
+      <div class="input-row">
+        <button class="btn-action" disabled>自動巡航待輪向與測距驗證</button>
+        <button class="btn-action" style="background: #7f1d1d;" onclick="demoAction('stop')">停止 Demo</button>
+        <button class="btn-action" style="background: #059669;" onclick="demoAction('nfc-tap')">模擬 NFC Tap</button>
+      </div>
+      <div class="tof-status" id="demo-state">Demo：IDLE</div>
+    </div>
+
     <div class="card">
       <h2>通訊封包檢視器 (Raw JSON-Lines Frame)</h2>
       <pre id="raw-frame">Listening for telemetry...</pre>
@@ -256,6 +301,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
   </div>
 
   <script>
+    let micBaseline = null;
+
     async function sendCommand(cmd, params = {}) {
       try {
         await fetch('/api/command', {
@@ -269,6 +316,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     }
 
     function sendDrive(left, right) {
+      // Each click is a single <=500ms firmware-limited calibration pulse.
       sendCommand('SET_MOTOR', { left_speed: left, right_speed: right });
     }
 
@@ -287,9 +335,38 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       }
     }
 
+    async function testTTS(baud) {
+      const label = document.getElementById('tts-test-status');
+      label.textContent = '送出 TTS TEST @ ' + baud + '…';
+      try {
+        const response = await fetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cmd: 'TTS_DIAGNOSTIC', params: { baud } })
+        });
+        label.textContent = response.ok ? '已送出 @ ' + baud + '；請聽喇叭' : '指令送出失敗';
+      } catch (err) {
+        label.textContent = '連線失敗';
+      }
+    }
+
     function sendOLED() {
       const line1 = document.getElementById('oled-input').value;
       sendCommand('DISPLAY_TEXT', { line1, line2: "STATUS: OK" });
+    }
+
+    async function demoAction(action) {
+      const response = await fetch('/api/demo/' + action, { method: 'POST' });
+      if (!response.ok) console.error(await response.text());
+      pollDemoStatus();
+    }
+
+    async function pollDemoStatus() {
+      try {
+        const res = await fetch('/api/demo/status');
+        const demo = await res.json();
+        document.getElementById('demo-state').textContent = `Demo：${demo.state}`;
+      } catch (err) {}
     }
 
     async function pollTelemetry() {
@@ -305,7 +382,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             const dist = d.tof_distance_mm;
             document.getElementById('tof-val').textContent = dist + ' mm';
             const alertEl = document.getElementById('tof-alert');
-            if (dist < 150) {
+            if (dist < 0) {
+              document.getElementById('tof-val').textContent = 'N/A';
+              alertEl.textContent = 'ToF 感測器未連線';
+              alertEl.className = 'tof-status tof-warning';
+            } else if (dist < 150) {
               alertEl.textContent = '⚠️ 前方障礙危險！';
               alertEl.className = 'tof-status tof-warning';
             } else {
@@ -322,13 +403,37 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           // Environment
           if (d.environment) {
             document.getElementById('env-val').textContent = `${d.environment.temp_c}°C / ${d.environment.humidity_pct}%`;
+
+            // Mic level meter (12-bit ADC, 0-4095)
+            if (d.environment.mic_level !== undefined) {
+              const mic = d.environment.mic_level;
+              const pct = Math.min(100, Math.round(mic / 4095 * 100));
+              document.getElementById('mic-bar').style.width = pct + '%';
+              document.getElementById('mic-raw').textContent = mic;
+
+              // Slow-following baseline; sudden spike = sound event
+              if (micBaseline === null) micBaseline = mic;
+              micBaseline = micBaseline * 0.98 + mic * 0.02;
+              document.getElementById('mic-baseline').textContent = Math.round(micBaseline);
+
+              const statusEl = document.getElementById('mic-status');
+              if (mic > micBaseline + 300) {
+                statusEl.textContent = '🔊 偵測到聲音！';
+                statusEl.className = 'mic-status loud';
+              } else {
+                statusEl.textContent = '待機';
+                statusEl.className = 'mic-status';
+              }
+            }
           }
         }
       } catch (err) {}
     }
 
-    setInterval(pollTelemetry, 1000);
+    setInterval(pollTelemetry, 200);
+    setInterval(pollDemoStatus, 500);
     pollTelemetry();
+    pollDemoStatus();
   </script>
 </body>
 </html>
@@ -346,6 +451,22 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(latest_telemetry).encode("utf-8"))
+        elif self.path == "/api/demo/status":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            status = demo_controller.status() if demo_controller else {"state": "UNAVAILABLE", "running": False}
+            self.wfile.write(json.dumps(status).encode("utf-8"))
+        elif self.path == "/api/diagnostics":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "hardware_mode": not bridge.simulate if bridge else False,
+                "last_ack": latest_ack,
+                "last_device_error": latest_device_error,
+                "latest_telemetry": latest_telemetry,
+            }).encode("utf-8"))
         elif self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -356,7 +477,29 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path == "/api/command":
+        if self.path in ("/api/demo/start", "/api/demo/stop", "/api/demo/nfc-tap"):
+            if self.path.endswith('/start'):
+                self.send_response(409)
+                self.end_headers()
+                self.wfile.write(b'Autonomous motion disabled pending motor and ToF validation')
+                return
+            if not demo_controller:
+                self.send_response(503)
+                self.end_headers()
+                return
+            if self.path.endswith("/start"):
+                demo_controller.start()
+                status = 200
+            elif self.path.endswith("/stop"):
+                demo_controller.stop()
+                status = 200
+            else:
+                status = 200 if demo_controller.redeem_nfc() else 409
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(demo_controller.status()).encode("utf-8"))
+        elif self.path == "/api/command":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
             try:
@@ -381,17 +524,29 @@ class RequestHandler(BaseHTTPRequestHandler):
         return
 
 def on_data_received(data):
-    global latest_telemetry
+    global latest_telemetry, latest_ack, latest_device_error
+    packet_type = data.get("type")
+    if packet_type == "ack":
+        latest_ack = data
+        return
+    if packet_type == "error":
+        latest_device_error = data
+        return
+    if packet_type != "telemetry":
+        return
     latest_telemetry = data
+    if demo_controller:
+        demo_controller.on_telemetry(data)
 
 def main():
-    global bridge
+    global bridge, demo_controller
     port = int(os.environ.get("HOST_API_PORT", 8000))
     simulate = os.environ.get("SIMULATE_HARDWARE", "true").lower() in ("true", "1", "yes")
     serial_port = os.environ.get("SERIAL_PORT", "/dev/cu.usbserial-0001")
     baud = int(os.environ.get("SERIAL_BAUD_RATE", 115200))
 
     bridge = HardwareBridge(port=serial_port, baud=baud, simulate=simulate, on_telemetry=on_data_received)
+    demo_controller = CouponDemoController(bridge.send_command)
     bridge.start()
 
     server = HTTPServer(("0.0.0.0", port), RequestHandler)

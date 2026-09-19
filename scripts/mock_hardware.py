@@ -12,6 +12,7 @@ import random
 import threading
 
 running = True
+motor_deadline = 0.0
 seq_num = 0
 
 state = {
@@ -25,21 +26,29 @@ state = {
         "line1": "MOCE:AI READY",
         "line2": "MOCK SIMULATOR"
     },
-    "last_spoken": ""
+    "last_spoken": "",
+    "distance_mm": 900.0,
 }
 
 def telemetry_emitter():
     global seq_num, running
     start_time = time.time()
     
+    previous_time = time.time()
     while running:
+        if time.monotonic() >= motor_deadline:
+            state["actuators"]["left_motor"] = 0
+            state["actuators"]["right_motor"] = 0
         seq_num += 1
-        elapsed = time.time() - start_time
+        now = time.time()
+        elapsed = now - start_time
+        delta_seconds = now - previous_time
+        previous_time = now
         
-        # Calculate dynamic mock physics
-        # If moving forward, distance decreases; else hovers around 200-400mm
+        # Simple deterministic approach model for the coupon-rover demo.
         fwd_speed = (state["actuators"]["left_motor"] + state["actuators"]["right_motor"]) / 2.0
-        base_dist = max(50.0, 350.0 - fwd_speed * 1.5 + random.uniform(-5.0, 5.0))
+        state["distance_mm"] = max(80.0, min(1600.0, state["distance_mm"] - fwd_speed * 2.0 * delta_seconds))
+        base_dist = state["distance_mm"] + random.uniform(-3.0, 3.0)
 
         packet = {
             "type": "telemetry",
@@ -67,10 +76,10 @@ def telemetry_emitter():
         }
         sys.stdout.write(json.dumps(packet) + "\n")
         sys.stdout.flush()
-        time.sleep(1.0)
+        time.sleep(0.05)
 
 def command_receiver():
-    global running, state
+    global running, state, motor_deadline
     
     for line in sys.stdin:
         if not running:
@@ -90,8 +99,9 @@ def command_receiver():
                 if cmd == "PING":
                     response = {"type": "ack", "msg_id": msg_id, "status": "ok", "message": "PONG"}
                 elif cmd == "SET_MOTOR":
-                    left = params.get("left_speed", 0)
-                    right = params.get("right_speed", 0)
+                    left = max(-50, min(50, params.get("left_speed", 0)))
+                    right = max(-50, min(50, params.get("right_speed", 0)))
+                    motor_deadline = time.monotonic() + 0.5
                     state["actuators"]["left_motor"] = left
                     state["actuators"]["right_motor"] = right
                     response = {"type": "ack", "msg_id": msg_id, "status": "ok", "message": f"Motors set to L:{left}, R:{right}"}

@@ -62,6 +62,7 @@ compile_commands.json
 # IDE / Agent artifacts
 .vscode/
 .idea/
+.claude/settings.json
 .claude/worktrees/
 .gstack/
 *.swp

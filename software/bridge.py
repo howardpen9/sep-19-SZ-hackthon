@@ -27,6 +27,7 @@ class HardwareBridge:
         self._thread: Optional[threading.Thread] = None
         self._proc: Optional[subprocess.Popen] = None
         self._serial = None
+        self._command_lock = threading.Lock()
 
     def start(self):
         self.running = True
@@ -59,6 +60,10 @@ class HardwareBridge:
         try:
             import serial
             self._serial = serial.Serial(self.port, self.baud, timeout=1.0)
+            # Keep GPIO0 and EN released. A reset pulse here can leave this
+            # USB-UART board in DOWNLOAD_BOOT instead of normal firmware mode.
+            self._serial.dtr = False
+            self._serial.rts = False
             self._thread = threading.Thread(target=self._read_serial_loop, daemon=True)
             self._thread.start()
         except ImportError:
@@ -77,7 +82,8 @@ class HardwareBridge:
                 if line:
                     self._handle_raw_line(line)
             except Exception as e:
-                sys.stderr.write(f"[Bridge] Read error: {e}\n")
+                if self.running:
+                    sys.stderr.write(f"[Bridge] Read error: {e}\n")
                 time.sleep(1.0)
 
     def _handle_raw_line(self, line: str):
@@ -94,18 +100,28 @@ class HardwareBridge:
             pass
 
     def send_command(self, cmd: str, params: Optional[dict] = None) -> None:
+        params = dict(params or {})
+        if cmd == "SPEAK":
+            text = params.get("text", "")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("SPEAK requires non-empty text")
+            encoded_text = text.encode("gbk")
+            if len(encoded_text) > 200:
+                raise ValueError("SPEAK supports at most 200 GBK bytes")
+            params["gbk_hex"] = encoded_text.hex()
         packet = {
             "type": "command",
             "msg_id": f"cmd-{int(time.time() * 1000)}",
             "cmd": cmd,
-            "params": params or {},
+            "params": params,
         }
         encoded = json.dumps(packet) + "\n"
-        if self.simulate and self._proc and self._proc.stdin:
-            self._proc.stdin.write(encoded)
-            self._proc.stdin.flush()
-        elif self._serial and self._serial.is_open:
-            self._serial.write(encoded.encode("utf-8"))
+        with self._command_lock:
+            if self.simulate and self._proc and self._proc.stdin:
+                self._proc.stdin.write(encoded)
+                self._proc.stdin.flush()
+            elif self._serial and self._serial.is_open:
+                self._serial.write(encoded.encode("utf-8"))
 
     def stop(self):
         self.running = False
